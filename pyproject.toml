@@ -35,6 +35,7 @@ urllib3 = "1.26.14"
 webdriver-auto-update = "0.1.0"
 wget = "3.2"
 yarl = "1.8.2"
+colorama = "^0.4.6"
 
 
 [build-system]
