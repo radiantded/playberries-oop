@@ -18,8 +18,7 @@ PROXY_PASS - пароль прокси
 
 ## Запуск
 ```
-python -m venv venv
-source venv/Scripts/activate
-pip install -r requirements.txt
+poetry shell
+poetry install
 python bot.py
 ```

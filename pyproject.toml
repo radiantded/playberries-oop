@@ -2,7 +2,7 @@
 name = "playberries-oop"
 version = "0.1.0"
 description = ""
-authors = ["Enver <radiantded@gmail.com>"]
+authors = ["radiantded"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
