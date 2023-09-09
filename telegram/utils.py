@@ -2,7 +2,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.types import Message
 
 from config import AUTH_USERS
-from keyboards import start_kb
+from telegram.keyboards import start_kb
 
 
 async def check_user(message: Message):

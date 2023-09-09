@@ -1,17 +1,16 @@
-from random import choice
-
 from aiogram import Bot
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.types import Message
 from aiogram.utils.executor import start_polling
+from telegram.fsms import CreateTaskFSM, DeleteTaskFSM, StartTaskFSM
+from telegram.keyboards import cancel_kb, launch_que_kb, start_kb
 
-from config import BOT_TOKEN, CONSOLE_COLORS
-from db import Database
-from fsms import CreateTaskFSM, DeleteTaskFSM, StartTaskFSM
-from keyboards import cancel_kb, launch_que_kb, start_kb
-from playberries import Task, script
-from utils import check_cancel, check_task, check_user, make_reply
+from config import BOT_TOKEN
+from database.db import Database
+from scrapper.datacls import Task
+from scrapper.playberries import script
+from telegram.utils import check_cancel, check_task, check_user, make_reply
 
 
 storage = MemoryStorage()
@@ -216,5 +215,5 @@ async def start(message: Message):
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     start_polling(dp, timeout=10000, skip_updates=True)

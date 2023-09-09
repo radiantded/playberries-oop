@@ -1,48 +1,26 @@
 import asyncio
-import sys
 from datetime import datetime as dt
-from pydantic import BaseModel
 from random import choice
-from typing import Any, Union
-from dataclasses import dataclass
+from typing import Any
 
 from aiohttp import ClientSession
 from playwright._impl._browser import Browser
 from playwright._impl._page import Page
-from playwright.async_api import async_playwright
-from playwright.async_api._generated import Playwright
 from playwright.async_api._context_manager import PlaywrightContextManager
 
-from config import (BROWSER_ARGS, CONSOLE_COLORS, ERROR_LIMIT, HEADLESS, PAGE_LIMIT,
-                    PROXY_LOGIN, PROXY_PASS, PROXY_SITE, USER_AGENTS,
-                    WAIT_AFTER_CART, WAIT_AFTER_FINISH, WEBSITE)
-from xpath_conf import (ITEM_MAIN_PAGE, NEXT_PAGE, OPTIONS, PAGE_HEIGHT,
-                        RECOMMENDATIONS, SEARCH_BLOCK, SEARCH_RESULTS)
-
-
-class Proxy(BaseModel):
-    ip: str
-    port: int
-    login: str = PROXY_LOGIN
-    password: str = PROXY_PASS 
-    
-    
-class Response(BaseModel):
-    status: str
-    list: dict[str, Proxy]
-
-@dataclass
-class Task:
-    task_id: int
-    prompt: str
-    item_id: int
-    cycles: int
-    skip_carts: int
+from config import (BROWSER_ARGS, CONSOLE_COLORS, ERROR_LIMIT, HEADLESS,
+                    PAGE_LIMIT, PROXY_SITE, USER_AGENTS, WAIT_AFTER_CART,
+                    WAIT_AFTER_FINISH, WEBSITE)
+from scrapper.datacls import Response, Task
+from scrapper.log import WildberriesLogger
+from scrapper.xpath_conf import (ITEM_MAIN_PAGE, NEXT_PAGE, OPTIONS, PAGE_HEIGHT,
+                        SEARCH_BLOCK)
 
 
 class Chrome(PlaywrightContextManager):
     
     def __init__(self, task: Task) -> None:
+        self.logger = WildberriesLogger(task._id)
         self.task = task
         self.skip_carts = task.skip_carts
         self.cycles = task.cycles
@@ -75,8 +53,7 @@ class Chrome(PlaywrightContextManager):
         self.browser_args.append(
             f'--user-agent={choice(USER_AGENTS)}',
         )
-        print(
-            f'{dt.now().strftime("%H:%M:%S")} |',
+        await self.logger.log(
             f'Подключение через прокси: {proxy.ip}:{proxy.port}'
         )
         
@@ -98,11 +75,7 @@ class Chrome(PlaywrightContextManager):
         self.page = await self.browser.new_page()
         await self.page.goto(WEBSITE)
         self.page.set_default_timeout(3000)
-        print(
-            self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-            # f'Задача {task_id} |',
-            'Сайт: ОК'
-        )
+        await self.logger.log('Сайт: ОК')
         
     async def perform_search(self):
         try:
@@ -115,20 +88,12 @@ class Chrome(PlaywrightContextManager):
             await search_box.press('Enter')
             self.page.get_by_text('По запросу')
             await self.wait(2)
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
-                'Поиск: ОК'
-            )
+            await self.logger.log('Поиск: ОК')
             return True
         except Exception as ex:
-            
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            print(exc_type, exc_obj, exc_tb, exc_tb.tb_lineno)
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
-                f'Поиск: Ошибка - {type(ex).__name__}')
+            await self.logger.log(
+                f'Поиск: Ошибка - {type(ex).__name__}'
+            )
             await self.browser.close()
             return False
 
@@ -147,16 +112,12 @@ class Chrome(PlaywrightContextManager):
             await next_page.hover()
             await asyncio.sleep(2)
             await next_page.click()
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
+            await self.logger.log(
                 'Переход на следующую страницу'
             )
             return True
         except Exception as ex:
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
+            await self.logger.log(
                 'Последняя страница'
             )
             return False
@@ -164,9 +125,7 @@ class Chrome(PlaywrightContextManager):
     async def locate_item(self):
         for page_num in range(1, self.page_limit):
             try:
-                print(
-                    self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                    # f'Задача {task_id} |',
+                await self.logger.log(
                     f'Страница {page_num}'
                 )
                 await self.smooth_scroll(PAGE_HEIGHT)
@@ -175,18 +134,14 @@ class Chrome(PlaywrightContextManager):
                 await self.wait(2)
                 await item.click()
                 await self.wait(2)
-                print(
-                    self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                    # f'Задача {task_id} |',
+                await self.logger.log(
                     'Товар: ОК'
                 )
                 return True
             except Exception as ex:
                 if not await self.next_page():
                     await self.browser.close()
-                    print(
-                        self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                        # f'Задача {task_id} |',
+                    await self.logger.log(
                         f'Перезапуск цикла, осталось циклов: {self.task.cycles}'
                     )
                     return False
@@ -194,20 +149,19 @@ class Chrome(PlaywrightContextManager):
     async def add_to_cart(self, primary=True):
         await self.wait(2)
         try:
-            cart = self.page.get_by_role('button', name='Добавить в корзину')
+            cart = self.page.get_by_role(
+                'button',
+                name='Добавить в корзину'
+            )
             await cart.click()
             await self.wait(WAIT_AFTER_CART)
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
+            await self.logger.log(
                 'Корзина: ОК'
             )
             if primary:
                 self.success = True
         except Exception as ex:
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
+            await self.logger.log(
                 f'Корзина: Ошибка - {type(ex).__name__}'
             )
             await self.wait(1)
@@ -232,9 +186,7 @@ class Chrome(PlaywrightContextManager):
         self.error_limit -= 1
     
     async def return_to_first_page(self):
-        print(
-            self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-            # f'Задача {task_id} |',
+        await self.logger.log(
             'Возврат на первую страницу'
         )
         try:
@@ -263,14 +215,12 @@ class Chrome(PlaywrightContextManager):
                 await item.click()
                 break
 
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
+            await self.logger.log(
                 f'Выбран товар {await item.get_attribute("data-nm-id")}'
             )
             await self.wait(10)
         except Exception as ex:
-            print(ex)
+            await self.logger.log(ex)
 
     async def click_cart(self):
         await self.wait(5)
@@ -281,33 +231,34 @@ class Chrome(PlaywrightContextManager):
             await cart.click()
             await self.page.wait_for_load_state()
             await self.wait(10)
-            print(
-                self.color + f'{dt.now().strftime("%H:%M:%S")} |',
-                # f'Задача {task_id} |',
-                'Выбраны рекомендации'
+            await self.logger.log(
+                'Переход в корзину'
             )
         except Exception as ex:
-            print(ex)
+            await self.logger.log(ex)
 
+    async def get_time(self):
+        return self.color + dt.now().strftime("%H:%M:%S")
 
 async def script(task: Task):
     async with Chrome(task) as chrome:
         while task.cycles and chrome.error_limit:
             try:
                 await chrome.launch()
-            except:
+            except Exception as ex:
+                await chrome.logger.log(ex)
                 await chrome.count_error()
                 continue
             try:
                 await chrome.load_page()
             except Exception as ex:
-                print(ex)
+                await chrome.logger.log(ex)
                 await chrome.close()
                 continue
             try:
                 await chrome.perform_search()
             except Exception as ex:
-                print(ex)
+                await chrome.logger.log(ex)
                 await chrome.close()
                 continue
             if not await chrome.locate_item():
@@ -329,9 +280,7 @@ async def script(task: Task):
                 await chrome.click_cart()
                 await chrome.skip_cart()
             if not chrome.success:
-                print(
-                    # color + f'{dt.now().strftime("%H:%M:%S")} |',
-                    # f'Задача {task_id} |',
+                await chrome.logger.log(
                     f'Перезапуск цикла, осталось циклов: {task.cycles}'
                 )
                 await chrome.close()
@@ -339,22 +288,18 @@ async def script(task: Task):
                 continue
             else:
                 task.cycles -= 1
-                print(
-                    # color + f'{dt.now().strftime("%H:%M:%S")} |',
-                    # f'Задача {task_id} |',
+                await chrome.logger.log(
                     f'Цикл завершён, осталось циклов: {task.cycles}'
                 )
                 await chrome.close()
             await chrome.wait(WAIT_AFTER_FINISH)        
         if not chrome.error_limit:
-            print(
-                # color + f'{dt.now().strftime("%H:%M:%S")} |',
-                f'Достигнут лимит ошибок по задаче {"task_id"} '
+            await chrome.logger.log(
+                f'Достигнут лимит ошибок по задаче'
             )
             return False
-        print(
-            # color + f'{dt.now().strftime("%H:%M:%S")} |',
-            f'Задача {"task_id"} завершена'
-            )
+        await chrome.logger.log(
+            'Задача завершена'
+        )
         return True
 
